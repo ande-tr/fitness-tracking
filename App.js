@@ -1,105 +1,107 @@
-import { StatusBar } from "expo-status-bar";
+import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, Text, View, Dimensions, Platform } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import Button from './components/Button'; 
-import ImageViewer from './components/ImageViewer';
-import { useState, useEffect, useRef } from 'react';
-import * as ScreenOrientation from 'expo-screen-orientation';
-import { ExpoWebGLRenderingContext } from 'expo-gl';
+
 import { Camera } from 'expo-camera';
+
+import * as tf from '@tensorflow/tfjs';
+import * as posedetection from '@tensorflow-models/pose-detection';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import {
+  bundleResourceIO,
   cameraWithTensors,
 } from '@tensorflow/tfjs-react-native';
-
-import * as tf from "@tensorflow/tfjs"
-import "@tensorflow/tfjs-react-native"
-import * as poseDetection from '@tensorflow-models/pose-detection';
-
+import Svg, { Circle } from 'react-native-svg';
+import { ExpoWebGLRenderingContext } from 'expo-gl';
 import { CameraType } from 'expo-camera/build/Camera.types';
 
-const PlaceholderImage = require("./assets/images/background-image.png");
-
+// tslint:disable-next-line: variable-name
 const TensorCamera = cameraWithTensors(Camera);
 
 const IS_ANDROID = Platform.OS === 'android';
 const IS_IOS = Platform.OS === 'ios';
+
+// Camera preview size.
+//
+// From experiments, to render camera feed without distortion, 16:9 ratio
+// should be used fo iOS devices and 4:3 ratio should be used for android
+// devices.
+//
+// This might not cover all cases.
 const CAM_PREVIEW_WIDTH = Dimensions.get('window').width;
 const CAM_PREVIEW_HEIGHT = CAM_PREVIEW_WIDTH / (IS_IOS ? 9 / 16 : 3 / 4);
+
+// The score threshold for pose detection results.
 const MIN_KEYPOINT_SCORE = 0.3;
+
+// The size of the resized output from TensorCamera.
+//
+// For movenet, the size here doesn't matter too much because the model will
+// preprocess the input (crop, resize, etc). For best result, use the size that
+// doesn't distort the image.
 const OUTPUT_TENSOR_WIDTH = 180;
 const OUTPUT_TENSOR_HEIGHT = OUTPUT_TENSOR_WIDTH / (IS_IOS ? 9 / 16 : 3 / 4);
-const AUTO_RENDER = false;
-const LOAD_MODEL_FROM_BUNDLE = false;
 
+// Whether to auto-render TensorCamera preview.
+const AUTO_RENDER = false;
 
 export default function App() {
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [isTfReady, setIsTfReady] = useState(null);
-  const [poses, setPoses] = useState(null);
+  const cameraRef = useRef(null);
+  const [tfReady, setTfReady] = useState(false);
+  const [model, setModel] = useState();
+  const [poses, setPoses] = useState();
   const [fps, setFps] = useState(0);
-  const [orientation, setOrientation] = useState(null);
+  const [orientation, setOrientation] =
+    useState();
   const [cameraType, setCameraType] = useState(
     Camera.Constants.Type.front
   );
-  const [model, setModel] = useState(null);
-
+  // Use `useRef` so that changing it won't trigger a re-render.
+  //
+  // - null: unset (initial value).
+  // - 0: animation frame/loop has been canceled.
+  // - >0: animation frame has been scheduled.
   const rafId = useRef(null);
 
-  const cameraRef = useRef(null);
-
-  const TensorCamera = cameraWithTensors(Camera);
-
-  const IS_ANDROID = Platform.OS === 'android';
-  const IS_IOS = Platform.OS === 'ios';
-
-  let detector;
-
-  // const waitForTf = async () => {
-  //   try {
-  //     await tf.ready();
-  //     setIsTfReady(true);
-  //   } catch (error) {
-  //     console.error(error);
-  //   }
-  // };
-
-  const setPoseModel = async () => {
-    model = poseDetection.SupportedModels.MoveNet;
-    detector = await poseDetection.createDetector(model);
-  }
-
-  const setUpApp = async () => {
-    await tf.setBackend('cpu');
-    await tf.ready();
-    setIsTfReady(true);
-
-    rafId.current = null;
-
-    const curOrientation = await ScreenOrientation.getOrientationAsync();
-    setOrientation(curOrientation);
-
-    ScreenOrientation.addOrientationChangeListener((event) => {
-      setOrientation(event.orientationInfo.orientation);
-    });
-
-    await Camera.requestCameraPermissionsAsync();
-
-    const movenetModelConfig = {
-      modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
-      enableSmoothing: true,
-    };
-
-    const model = await poseDetection.SupportedModels.MoveNet;
-    detector = await poseDetection.createDetector(model, movenetModelConfig);
-
-    setModel(detector);
-  }
-
   useEffect(() => {
-    setUpApp();
+    async function prepare() {
+      rafId.current = null;
+
+      // Set initial orientation.
+      const curOrientation = await ScreenOrientation.getOrientationAsync();
+      setOrientation(curOrientation);
+
+      // Listens to orientation change.
+      ScreenOrientation.addOrientationChangeListener((event) => {
+        setOrientation(event.orientationInfo.orientation);
+      });
+
+      // Camera permission.
+      await Camera.requestCameraPermissionsAsync();
+
+      // Wait for tfjs to initialize the backend.
+      await tf.ready();
+
+      // Load movenet model.
+      // https://github.com/tensorflow/tfjs-models/tree/master/pose-detection
+      const movenetModelConfig = {
+        modelType: posedetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+        enableSmoothing: true,
+      };
+      const model = await posedetection.createDetector(
+        posedetection.SupportedModels.MoveNet,
+        movenetModelConfig
+      );
+      setModel(model);
+
+      // Ready!
+      setTfReady(true);
+    }
+
+    prepare();
   }, []);
 
   useEffect(() => {
+    // Called when the app is unmounted.
     return () => {
       if (rafId.current != null && rafId.current !== 0) {
         cancelAnimationFrame(rafId.current);
@@ -116,13 +118,15 @@ export default function App() {
     const loop = async () => {
       // Get the tensor and run pose detection.
       const imageTensor = images.next().value;
-      console.log(model);
+
       const startTs = Date.now();
-      const poses = await model.estimatePoses(
-        imageTensor,
-        undefined,
-        Date.now()
-      );
+      if(model){
+        const poses = await model.estimatePoses(
+          imageTensor,
+          undefined,
+          Date.now()
+        );
+      }
       const latency = Date.now() - startTs;
       setFps(Math.floor(1000 / latency));
       setPoses(poses);
@@ -132,6 +136,7 @@ export default function App() {
         return;
       }
 
+      // Render camera preview manually when autorender=false.
       if (!AUTO_RENDER) {
         updatePreview();
         gl.endFrameEXP();
@@ -142,23 +147,6 @@ export default function App() {
 
     loop();
   };
-
-  // const pickImageAsync = async () => {
-  //   let result = await ImagePicker.launchImageLibraryAsync({
-  //     allowsEditing: true,
-  //     quality: 1,
-  //   });
-
-  //   if (!result.canceled) {
-  //     setSelectedImage(result.assets[0].uri);
-  //   } else {
-  //     alert('You did not select any image.');
-  //   }
-  // };
-
-  // componentDidMount() {
-  //   this.setupConnection();
-  // }
 
   const renderPose = () => {
     if (poses != null && poses.length > 0) {
@@ -271,7 +259,7 @@ export default function App() {
     }
   };
 
-  if (!isTfReady) {
+  if (!tfReady) {
     return (
       <View style={styles.loadingMsg}>
         <Text>Loading...</Text>
