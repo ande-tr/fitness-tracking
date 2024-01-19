@@ -95,6 +95,7 @@ export default function App() {
 
   useEffect(() => {
     setUpApp();
+    console.log(isTfReady);
   }, []);
 
   useEffect(() => {
@@ -289,15 +290,14 @@ export default function App() {
           style={styles.camera}
           autorender={AUTO_RENDER}
           type={cameraType}
-          // tensor related props
           resizeWidth={getOutputTensorWidth()}
           resizeHeight={getOutputTensorHeight()}
           resizeDepth={3}
           rotation={getTextureRotationAngleInDegrees()}
           onReady={handleCameraStream}
         />
-        {renderPose()}
-        {renderFps()}
+        {/* {renderPose()}
+        {renderFps()} */}
         {renderCameraTypeSwitcher()}
       </View>
     );
@@ -305,17 +305,56 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#25292e',
-    alignItems: 'center',
+  containerPortrait: {
+    position: 'relative',
+    width: CAM_PREVIEW_WIDTH,
+    height: CAM_PREVIEW_HEIGHT,
+    marginTop: Dimensions.get('window').height / 2 - CAM_PREVIEW_HEIGHT / 2,
   },
-  imageContainer: {
-    flex: 1,
-    paddingTop: 58,
+  containerLandscape: {
+    position: 'relative',
+    width: CAM_PREVIEW_HEIGHT,
+    height: CAM_PREVIEW_WIDTH,
+    marginLeft: Dimensions.get('window').height / 2 - CAM_PREVIEW_HEIGHT / 2,
   },
-  footerContainer: {
-    flex: 1 / 3,
+  loadingMsg: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  camera: {
+    width: '100%',
+    height: '100%',
+    zIndex: 1,
+  },
+  svg: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+    zIndex: 30,
+  },
+  fpsContainer: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    width: 80,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, .7)',
+    borderRadius: 2,
+    padding: 8,
+    zIndex: 20,
+  },
+  cameraTypeSwitcher: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 180,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, .7)',
+    borderRadius: 2,
+    padding: 8,
+    zIndex: 20,
   },
 });
