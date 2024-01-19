@@ -65,10 +65,14 @@ export default function App() {
 
   const setPoseModel = async () => {
     model = poseDetection.SupportedModels.MoveNet;
-    detector = await poseDetection.createDetector(model).then((response) => console.log(response));
+    detector = await poseDetection.createDetector(model);
   }
 
   const setUpApp = async () => {
+    await tf.setBackend('cpu');
+    await tf.ready();
+    setIsTfReady(true);
+
     rafId.current = null;
 
     const curOrientation = await ScreenOrientation.getOrientationAsync();
@@ -79,7 +83,6 @@ export default function App() {
     });
 
     await Camera.requestCameraPermissionsAsync();
-    await tf.ready();
 
     const movenetModelConfig = {
       modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
@@ -87,10 +90,9 @@ export default function App() {
     };
 
     const model = await poseDetection.SupportedModels.MoveNet;
-    detector = await poseDetection.createDetector(model, movenetModelConfig).then((response) => console.log(response));
+    detector = await poseDetection.createDetector(model, movenetModelConfig);
 
     setModel(detector);
-    setIsTfReady(true);
   }
 
   useEffect(() => {
@@ -114,7 +116,7 @@ export default function App() {
     const loop = async () => {
       // Get the tensor and run pose detection.
       const imageTensor = images.next().value;
-
+      console.log(model);
       const startTs = Date.now();
       const poses = await model.estimatePoses(
         imageTensor,
@@ -305,17 +307,56 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#25292e',
-    alignItems: 'center',
+  containerPortrait: {
+    position: 'relative',
+    width: CAM_PREVIEW_WIDTH,
+    height: CAM_PREVIEW_HEIGHT,
+    marginTop: Dimensions.get('window').height / 2 - CAM_PREVIEW_HEIGHT / 2,
   },
-  imageContainer: {
-    flex: 1,
-    paddingTop: 58,
+  containerLandscape: {
+    position: 'relative',
+    width: CAM_PREVIEW_HEIGHT,
+    height: CAM_PREVIEW_WIDTH,
+    marginLeft: Dimensions.get('window').height / 2 - CAM_PREVIEW_HEIGHT / 2,
   },
-  footerContainer: {
-    flex: 1 / 3,
+  loadingMsg: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  camera: {
+    width: '100%',
+    height: '100%',
+    zIndex: 1,
+  },
+  svg: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+    zIndex: 30,
+  },
+  fpsContainer: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    width: 80,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, .7)',
+    borderRadius: 2,
+    padding: 8,
+    zIndex: 20,
+  },
+  cameraTypeSwitcher: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 180,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, .7)',
+    borderRadius: 2,
+    padding: 8,
+    zIndex: 20,
   },
 });
